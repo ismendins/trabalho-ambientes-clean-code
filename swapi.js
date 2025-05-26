@@ -3,14 +3,14 @@
 
 const http = require("http");
 const https = require("https");
-const express = require('express');
-
-const app = express();
 
 const cache = {};
 let debug_mode = true;
 let timeout = 5000;
 let err_count = 0;
+const HTTP_STATUS_BAD_REQUEST = 400;
+const HTTP_STATUS_OK = 200;
+const HTTP_STATUS_NOT_FOUND = 404;
 
 async function f(x) {
     if (cache[x]) {
@@ -21,7 +21,7 @@ async function f(x) {
     return new Promise((r, j) => {
         let d = "";
         const req = https.get(`https://swapi.dev/api/${x}`, { rejectUnauthorized: false }, (res) => {
-            if (res.statusCode >= 400) {
+            if (res.statusCode >= HTTP_STATUS_BAD_REQUEST) {
                 err_count++;
                 return j(new Error(`Request failed with status code ${res.statusCode}`));
             }
@@ -55,16 +55,16 @@ async function f(x) {
 }
 
 // Global variables for tracking state
-let lastId = 1;
 let fetch_count = 0;
 let total_size = 0;
-
 async function p() {
+    let lastId = 1;
+
     try {
         if (debug_mode) console.log("Starting data fetch...");
         fetch_count++;
         
-        const p1 = await f("people/" + lastId);
+        const p1 = await f(`people/${  lastId}`);
         total_size += JSON.stringify(p1).length;
         // cortar aqui e colocar em uma função? 
         console.log("Character:", p1.name);
@@ -80,7 +80,8 @@ async function p() {
         console.log("\nTotal Starships:", s1.count);
         
         // Print first 3 starships with details
-        for (let i = 0; i < 3; i++) {
+        const starshipsToPrint = 3;
+        for (let i = 0; i < starshipsToPrint; i++) {
             if (i < s1.results.length) {
                 const s = s1.results[i];
                 // cortar aqui e colocar em uma função? 
@@ -89,7 +90,7 @@ async function p() {
                 console.log("Name:", s.name);
                 console.log("Model:", s.model);
                 console.log("Manufacturer:", s.manufacturer);
-                console.log("Cost:", s.cost_in_credits !== "unknown" ? s.cost_in_credits + " credits" : "unknown");
+                console.log("Cost:", s.cost_in_credits !== "unknown" ? `${s.cost_in_credits  } credits` : "unknown");
                 console.log("Speed:", s.max_atmosphering_speed);
                 console.log("Hyperdrive Rating:", s.hyperdrive_rating);
                 if (s.pilots && s.pilots.length > 0) {
@@ -99,19 +100,21 @@ async function p() {
         }
         
         // Find planets with population > 1000000000 and diameter > 10000
-        // minimal_population = 1000000000. minimal_diameter = 10000
+        const minimalPopulation = 1000000000;
+        const minimalDiameter = 10000;
+
         const planets = await f("planets/?page=1");
         total_size += JSON.stringify(planets).length;
         console.log("\nLarge populated planets:");
         for (let i = 0; i < planets.results.length; i++) {
-            const p = planets.results[i];
-            if (p.population !== "unknown" && parseInt(p.population) > 1000000000 && 
-                p.diameter !== "unknown" && parseInt(p.diameter) > 10000) {
-                console.log(p.name, "- Pop:", p.population, "- Diameter:", p.diameter, "- Climate:", p.climate);
+            const planet = planets.results[i];
+            if (planet.population !== "unknown" && parseInt(planet.population) > minimalPopulation && 
+                planet.diameter !== "unknown" && parseInt(planet.diameter) > minimalDiameter) {
+                console.log(planet.name, "- Pop:", planet.population, "- Diameter:", planet.diameter, "- Climate:", planet.climate);
                 // Check if it appears in any films
                 // minimal_films = 0
-                if (p.films && p.films.length > 0) {
-                    console.log(`  Appears in ${p.films.length} films`);
+                if (planet.films && planet.films.length > 0) {
+                    console.log(`  Appears in ${planet.films.length} films`);
                 }
             }
         }
@@ -135,8 +138,9 @@ async function p() {
         }
         
         // Get a vehicle and display details
-        if (lastId <= 4) {
-            const vehicle = await f("vehicles/" + lastId);
+        const maxVehicles = 4;
+        if (lastId <= maxVehicles) {
+            const vehicle = await f(`vehicles/${  lastId}`);
             total_size += JSON.stringify(vehicle).length;
             console.log("\nFeatured Vehicle:");
             console.log("Name:", vehicle.name);
@@ -165,7 +169,8 @@ async function p() {
 }
 
 // Process command line arguments
-const args = process.argv.slice(2);
+const slicesSize = 2;
+const args = process.argv.slice(slicesSize);
 if (args.includes("--no-debug")) {
     debug_mode = false;
 }
@@ -177,10 +182,11 @@ if (args.includes("--timeout")) {
 }
 
 // Create a simple HTTP server to display the results
-// HTTP statusOK = 200
+
+
 const server = http.createServer((req, res) => {
     if (req.url === "/" || req.url === "/index.html") {
-        res.writeHead(200, {"Content-Type": "text/html"});
+        res.writeHead(HTTP_STATUS_OK, { "Content-Type": "text/html" });
         res.end(`
             <!DOCTYPE html>
             <html>
@@ -223,10 +229,10 @@ const server = http.createServer((req, res) => {
         `);
     } else if (req.url === "/api") {
         p();
-        res.writeHead(200, {"Content-Type": "text/plain"});
+        res.writeHead(HTTP_STATUS_OK, { "Content-Type": "text/plain" });
         res.end("Check server console for results");
     } else if (req.url === "/stats") {
-        res.writeHead(200, {"Content-Type": "application/json"});
+        res.writeHead(HTTP_STATUS_OK, { "Content-Type": "application/json" });
         res.end(JSON.stringify({
             api_calls: fetch_count,
             cache_size: Object.keys(cache).length,
@@ -236,15 +242,15 @@ const server = http.createServer((req, res) => {
             timeout: timeout
         }));
     } else {
-        // HTTP status_NOT_FOUND = 400;
 
-        res.writeHead(404, {"Content-Type": "text/plain"});
+        res.writeHead(HTTP_STATUS_NOT_FOUND, { "Content-Type": "text/plain" });
         res.end("Not Found");
     }
 });
 
-// port = 3000 OU editar e colocar num venv
-const PORT = process.env.PORT || 3000;
+const number_port = 3000;
+
+const PORT = process.env.PORT || number_port;
 server.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}/`);
     console.log("Open the URL in your browser and click the button to fetch Star Wars data");
