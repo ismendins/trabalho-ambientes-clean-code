@@ -12,28 +12,29 @@ const HTTP_STATUS_BAD_REQUEST = 400;
 const HTTP_STATUS_OK = 200;
 const HTTP_STATUS_NOT_FOUND = 404;
 
-async function f(x) {
-    if (cache[x]) {
-        if (debug_mode) console.log("Using cached data for", x);
-        return cache[x];
+
+async function requestAndCacheData(requestedTerm) {
+    if (cache[requestedTerm]) {
+        if (debug_mode) console.log("Using cached data for", requestedTerm);
+        return cache[requestedTerm];
     }
     
-    return new Promise((r, j) => {
-        let d = "";
-        const req = https.get(`https://swapi.dev/api/${x}`, { rejectUnauthorized: false }, (res) => {
+    return new Promise((results, j) => {
+        let data = "";
+        const req = https.get(`https://swapi.dev/api/${requestedTerm}`, { rejectUnauthorized: false }, (res) => {
             if (res.statusCode >= HTTP_STATUS_BAD_REQUEST) {
                 err_count++;
                 return j(new Error(`Request failed with status code ${res.statusCode}`));
             }
             
-            res.on("data", (chunk) => { d += chunk; });
+            res.on("data", (chunk) => { data += chunk; });
             res.on("end", () => {
                 try {
-                    const p = JSON.parse(d);
-                    cache[x] = p; // Cache the result
-                    r(p);
+                    const parsedData = JSON.parse(data);
+                    cache[requestedTerm] = parsedData; // Cache the result
+                    results(parsedData);
                     if (debug_mode) {
-                        console.log(`Successfully fetched data for ${x}`);
+                        console.log(`Successfully fetched data for ${requestedTerm}`);
                         console.log(`Cache size: ${Object.keys(cache).length}`);
                     }
                 } catch (e) {
@@ -49,7 +50,7 @@ async function f(x) {
         req.setTimeout(timeout, () => {
             req.abort();
             err_count++;
-            j(new Error(`Request timeout for ${x}`));
+            j(new Error(`Request timeout for ${requestedTerm}`));
         });
     });
 }
@@ -57,14 +58,15 @@ async function f(x) {
 // Global variables for tracking state
 let fetch_count = 0;
 let total_size = 0;
-async function p() {
+
+async function printGalaxyObjects() {
     let lastId = 1;
 
     try {
         if (debug_mode) console.log("Starting data fetch...");
         fetch_count++;
         
-        const p1 = await f(`people/${  lastId}`);
+        const p1 = await requestAndCacheData(`people/${  lastId}`);
         total_size += JSON.stringify(p1).length;
         // cortar aqui e colocar em uma função? 
         console.log("Character:", p1.name);
@@ -75,7 +77,7 @@ async function p() {
             console.log("Appears in", p1.films.length, "films");
         }
         
-        const s1 = await f("starships/?page=1");
+        const s1 = await requestAndCacheData("starships/?page=1");
         total_size += JSON.stringify(s1).length;
         console.log("\nTotal Starships:", s1.count);
         
@@ -103,7 +105,7 @@ async function p() {
         const minimalPopulation = 1000000000;
         const minimalDiameter = 10000;
 
-        const planets = await f("planets/?page=1");
+        const planets = await requestAndCacheData("planets/?page=1");
         total_size += JSON.stringify(planets).length;
         console.log("\nLarge populated planets:");
         for (let i = 0; i < planets.results.length; i++) {
@@ -120,7 +122,7 @@ async function p() {
         }
         
         // Get films and sort by release date, then print details
-        const films = await f("films/");
+        const films = await requestAndCacheData("films/");
         total_size += JSON.stringify(films).length;
         const filmList = films.results;
         filmList.sort((a, b) => {
@@ -140,7 +142,7 @@ async function p() {
         // Get a vehicle and display details
         const maxVehicles = 4;
         if (lastId <= maxVehicles) {
-            const vehicle = await f(`vehicles/${  lastId}`);
+            const vehicle = await requestAndCacheData(`vehicles/${  lastId}`);
             total_size += JSON.stringify(vehicle).length;
             console.log("\nFeatured Vehicle:");
             console.log("Name:", vehicle.name);
@@ -228,7 +230,7 @@ const server = http.createServer((req, res) => {
             </html>
         `);
     } else if (req.url === "/api") {
-        p();
+        printGalaxyObjects();
         res.writeHead(HTTP_STATUS_OK, { "Content-Type": "text/plain" });
         res.end("Check server console for results");
     } else if (req.url === "/stats") {
