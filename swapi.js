@@ -19,12 +19,12 @@ async function requestAndCacheData(requestedTerm) {
         return cache[requestedTerm];
     }
     
-    return new Promise((results, j) => {
+    return new Promise((results, justification) => {
         let data = "";
         const req = https.get(`https://swapi.dev/api/${requestedTerm}`, { rejectUnauthorized: false }, (res) => {
             if (res.statusCode >= HTTP_STATUS_BAD_REQUEST) {
                 err_count++;
-                return j(new Error(`Request failed with status code ${res.statusCode}`));
+                return justification(new Error(`Request failed with status code ${res.statusCode}`));
             }
             
             res.on("data", (chunk) => { data += chunk; });
@@ -39,18 +39,18 @@ async function requestAndCacheData(requestedTerm) {
                     }
                 } catch (e) {
                     err_count++;
-                    j(e);
+                    justification(e);
                 }
             });
         }).on("error", (e) => {
             err_count++;
-            j(e);
+            justification(e);
         });
         
         req.setTimeout(timeout, () => {
             req.abort();
             err_count++;
-            j(new Error(`Request timeout for ${requestedTerm}`));
+            justification(new Error(`Request timeout for ${requestedTerm}`));
         });
     });
 }
@@ -66,37 +66,35 @@ async function printGalaxyObjects() {
         if (debug_mode) console.log("Starting data fetch...");
         fetch_count++;
         
-        const p1 = await requestAndCacheData(`people/${  lastId}`);
-        total_size += JSON.stringify(p1).length;
-        // cortar aqui e colocar em uma função? 
-        console.log("Character:", p1.name);
-        console.log("Height:", p1.height);
-        console.log("Mass:", p1.mass);
-        console.log("Birthday:", p1.birth_year);
-        if (p1.films && p1.films.length > 0) {
-            console.log("Appears in", p1.films.length, "films");
+        const character = await requestAndCacheData(`people/${  lastId}`);
+        total_size += JSON.stringify(character).length;
+        console.log("Character:", character.name);
+        console.log("Height:", character.height);
+        console.log("Mass:", character.mass);
+        console.log("Birthday:", character.birth_year);
+        if (character.films && character.films.length > 0) {
+            console.log("Appears in", character.films.length, "films");
         }
         
-        const s1 = await requestAndCacheData("starships/?page=1");
-        total_size += JSON.stringify(s1).length;
-        console.log("\nTotal Starships:", s1.count);
+        const starships = await requestAndCacheData("starships/?page=1");
+        total_size += JSON.stringify(starships).length;
+        console.log("\nTotal Starships:", starships.count);
         
         // Print first 3 starships with details
         const starshipsToPrint = 3;
         for (let i = 0; i < starshipsToPrint; i++) {
-            if (i < s1.results.length) {
-                const s = s1.results[i];
-                // cortar aqui e colocar em uma função? 
+            if (i < starships.results.length) {
+                const starship = starships.results[i];
 
                 console.log(`\nStarship ${i+1}:`);
-                console.log("Name:", s.name);
-                console.log("Model:", s.model);
-                console.log("Manufacturer:", s.manufacturer);
-                console.log("Cost:", s.cost_in_credits !== "unknown" ? `${s.cost_in_credits  } credits` : "unknown");
-                console.log("Speed:", s.max_atmosphering_speed);
-                console.log("Hyperdrive Rating:", s.hyperdrive_rating);
-                if (s.pilots && s.pilots.length > 0) {
-                    console.log("Pilots:", s.pilots.length);
+                console.log("Name:", starship.name);
+                console.log("Model:", starship.model);
+                console.log("Manufacturer:", starship.manufacturer);
+                console.log("Cost:", starship.cost_in_credits !== "unknown" ? `${starship.cost_in_credits  } credits` : "unknown");
+                console.log("Speed:", starship.max_atmosphering_speed);
+                console.log("Hyperdrive Rating:", starship.hyperdrive_rating);
+                if (starship.pilots && starship.pilots.length > 0) {
+                    console.log("Pilots:", starship.pilots.length);
                 }
             }
         }
@@ -113,9 +111,8 @@ async function printGalaxyObjects() {
             if (planet.population !== "unknown" && parseInt(planet.population) > minimalPopulation && 
                 planet.diameter !== "unknown" && parseInt(planet.diameter) > minimalDiameter) {
                 console.log(planet.name, "- Pop:", planet.population, "- Diameter:", planet.diameter, "- Climate:", planet.climate);
-                // Check if it appears in any films
-                // minimal_films = 0
-                if (planet.films && planet.films.length > 0) {
+                const minimal_films = 0
+                if (planet.films && planet.films.length > minimal_films) {
                     console.log(`  Appears in ${planet.films.length} films`);
                 }
             }
